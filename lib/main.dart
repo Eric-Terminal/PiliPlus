@@ -9,6 +9,7 @@ import 'package:PiliPlus/common/widgets/scale_app.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
@@ -16,9 +17,11 @@ import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/calc_window_position.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
+import 'package:PiliPlus/utils/device_utils.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/json_file_handler.dart';
+import 'package:PiliPlus/utils/max_screen_size.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/request_utils.dart';
@@ -28,6 +31,7 @@ import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:catcher_2/catcher_2.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,9 +44,12 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:window_manager/window_manager.dart' hide calcWindowPosition;
 
 WebViewEnvironment? webViewEnvironment;
+
+EdgeInsets? tmpPadding;
 
 Future<void> _initDownPath() async {
   if (PlatformUtils.isDesktop) {
@@ -82,6 +89,10 @@ Future<void> _initAppPath() async {
   appSupportDirPath = (await getApplicationSupportDirectory()).path;
 }
 
+Future<void> _initSdkInt() async {
+  DeviceUtils.sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+}
+
 void main() async {
   ScaledWidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -104,15 +115,8 @@ void main() async {
 
   if (PlatformUtils.isMobile) {
     await Future.wait([
-      SystemChrome.setPreferredOrientations(
-        [
-          DeviceOrientation.portraitUp,
-          if (Pref.horizontalScreen) ...[
-            DeviceOrientation.landscapeLeft,
-            DeviceOrientation.landscapeRight,
-          ],
-        ],
-      ),
+      if (Platform.isAndroid) ...[_initSdkInt(), MaxScreenSize.init()],
+      if (Pref.horizontalScreen) ?fullMode() else ?portraitUpMode(),
       setupServiceLocator(),
     ]);
   } else if (Platform.isWindows) {
@@ -131,12 +135,10 @@ void main() async {
   Request.setCookie();
   RequestUtils.syncHistoryStatus();
 
-  SmartDialog.config.toast = SmartConfigToast(
-    displayType: SmartToastType.onlyRefresh,
-  );
+  SmartDialog.config.toast = SmartConfigToast(displayType: .onlyRefresh);
 
   if (PlatformUtils.isMobile) {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setEnabledSystemUIMode(.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         systemNavigationBarColor: Colors.transparent,
@@ -158,6 +160,8 @@ void main() async {
         }
         FlutterDisplayMode.setPreferredMode(displayMode ?? DisplayMode.auto);
       });
+    } else {
+      ScreenBrightnessPlatform.instance.setAutoReset(false);
     }
   } else if (PlatformUtils.isDesktop) {
     await windowManager.ensureInitialized();
@@ -230,8 +234,6 @@ class MyApp extends StatelessWidget {
 
   static ColorScheme? _light, _dark;
 
-  static ThemeData? darkThemeData;
-
   static void _onBack() {
     if (SmartDialog.checkExist()) {
       SmartDialog.dismiss();
@@ -257,13 +259,13 @@ class MyApp extends StatelessWidget {
     late final brandColor = colorThemeTypes[Pref.customColor].color;
     late final variant = Pref.schemeVariant;
     return (
-      ThemeUtils.getThemeData(
+      ThemeUtils.lightTheme = ThemeUtils.getThemeData(
         colorScheme: dynamicColor
             ? _light!
             : brandColor.asColorSchemeSeed(variant, .light),
         isDynamic: dynamicColor,
       ),
-      ThemeUtils.getThemeData(
+      ThemeUtils.darkTheme = ThemeUtils.getThemeData(
         isDark: true,
         colorScheme: dynamicColor
             ? _dark!
@@ -280,7 +282,7 @@ class MyApp extends StatelessWidget {
       title: Constants.appName,
       theme: light,
       darkTheme: dark,
-      themeMode: Pref.themeMode,
+      themeMode: ThemeUtils.themeMode = Pref.themeMode,
       localizationsDelegates: const [
         GlobalCupertinoLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -316,16 +318,20 @@ class MyApp extends StatelessWidget {
         data: mediaQuery.copyWith(
           textScaler: textScaler,
           size: mediaQuery.size / uiScale,
-          padding: mediaQuery.padding / uiScale,
+          padding: (tmpPadding ?? mediaQuery.padding) / uiScale,
           viewInsets: mediaQuery.viewInsets / uiScale,
-          viewPadding: mediaQuery.viewPadding / uiScale,
+          viewPadding: (tmpPadding ?? mediaQuery.viewPadding) / uiScale,
           devicePixelRatio: mediaQuery.devicePixelRatio * uiScale,
         ),
         child: child!,
       );
     } else {
       child = MediaQuery(
-        data: mediaQuery.copyWith(textScaler: textScaler),
+        data: mediaQuery.copyWith(
+          textScaler: textScaler,
+          padding: tmpPadding,
+          viewPadding: tmpPadding,
+        ),
         child: child!,
       );
     }

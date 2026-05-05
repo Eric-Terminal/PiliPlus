@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:math' show pi, max;
+import 'dart:math' show max;
 
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
@@ -70,19 +70,16 @@ List<SettingsModel> get extraSettings => [
       onTap: _showDownPathDialog,
     ),
   ],
-  SwitchModel(
-    title: '空降助手',
-    subtitle: '点击配置',
-    setKey: SettingBoxKey.enableSponsorBlock,
-    defaultVal: false,
-    onTap: (context) => Get.toNamed('/sponsorBlock'),
-    leading: const Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        Icon(Icons.shield_outlined),
-        Icon(Icons.play_arrow_rounded, size: 15),
-      ],
+  SplitModel(
+    normalModel: const NormalModel.split(
+      title: '空降助手',
+      subtitle: '点击配置',
+      leading: Icon(CustomIcons.shield_play_arrow),
+    ),
+    switchModel: SwitchModel.split(
+      defaultVal: false,
+      setKey: SettingBoxKey.enableSponsorBlock,
+      onTap: (context) => Get.toNamed('/sponsorBlock'),
     ),
   ),
   PopupModel<SkipType>(
@@ -94,21 +91,22 @@ List<SettingsModel> get extraSettings => [
         .put(SettingBoxKey.pgcSkipType, value.index)
         .whenComplete(setState),
   ),
-  SwitchModel(
-    title: '检查未读动态',
-    subtitle: '点击设置检查周期(min)',
-    leading: const Icon(Icons.notifications_none),
-    setKey: SettingBoxKey.checkDynamic,
-    defaultVal: true,
-    onChanged: (value) => Get.find<MainController>().checkDynamic = value,
-    onTap: _showDynDialog,
-  ),
-  SwitchModel(
-    title: '显示视频分段信息',
-    leading: Transform.rotate(
-      angle: pi / 2,
-      child: const Icon(MdiIcons.viewHeadline),
+  SplitModel(
+    normalModel: const NormalModel.split(
+      title: '检查未读动态',
+      subtitle: '点击设置检查周期(min)',
+      leading: Icon(Icons.notifications_none),
     ),
+    switchModel: SwitchModel.split(
+      defaultVal: true,
+      setKey: SettingBoxKey.checkDynamic,
+      onChanged: (value) => Get.find<MainController>().checkDynamic = value,
+      onTap: _showDynDialog,
+    ),
+  ),
+  const SwitchModel(
+    title: '显示视频分段信息',
+    leading: Icon(CustomIcons.view_headline_rotate_90),
     setKey: SettingBoxKey.showViewPoints,
     defaultVal: true,
   ),
@@ -146,13 +144,13 @@ List<SettingsModel> get extraSettings => [
     title: '横屏分P/合集列表显示在Tab栏',
     leading: const Icon(Icons.format_list_numbered_rtl_sharp),
     setKey: SettingBoxKey.horizontalSeasonPanel,
-    defaultVal: PlatformUtils.isDesktop,
+    defaultVal: Pref.horizontalScreen,
   ),
   SwitchModel(
     title: '横屏播放页在侧栏打开UP主页',
     leading: const Icon(Icons.account_circle_outlined),
     setKey: SettingBoxKey.horizontalMemberPage,
-    defaultVal: PlatformUtils.isDesktop,
+    defaultVal: Pref.horizontalScreen,
   ),
   SwitchModel(
     title: '横屏在侧栏打开图片预览',
@@ -372,14 +370,7 @@ List<SettingsModel> get extraSettings => [
   const SwitchModel(
     title: '发评反诈',
     subtitle: '发送评论后检查评论是否可见',
-    leading: Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        Icon(Icons.shield_outlined),
-        Icon(Icons.reply, size: 14),
-      ],
-    ),
+    leading: Icon(CustomIcons.shield_reply),
     setKey: SettingBoxKey.enableCommAntifraud,
     defaultVal: false,
   ),
@@ -396,51 +387,27 @@ List<SettingsModel> get extraSettings => [
   const SwitchModel(
     title: '发布/转发动态反诈',
     subtitle: '发布/转发动态后检查动态是否可见',
-    leading: Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        Icon(Icons.shield_outlined),
-        Icon(Icons.motion_photos_on, size: 12),
-      ],
-    ),
+    leading: Icon(CustomIcons.shield_published),
     setKey: SettingBoxKey.enableCreateDynAntifraud,
     defaultVal: false,
   ),
   SwitchModel(
     title: '屏蔽带货动态',
-    leading: const Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        Icon(Icons.shopping_bag_outlined, size: 14),
-        Icon(Icons.not_interested),
-      ],
-    ),
+    leading: const Icon(CustomIcons.shopping_bag_not_interested),
     setKey: SettingBoxKey.antiGoodsDyn,
     defaultVal: false,
     onChanged: (value) => DynamicsDataModel.antiGoodsDyn = value,
   ),
   SwitchModel(
     title: '屏蔽带货评论',
-    leading: const Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        Icon(Icons.shopping_bag_outlined, size: 14),
-        Icon(Icons.not_interested),
-      ],
-    ),
+    leading: const Icon(CustomIcons.shopping_bag_not_interested),
     setKey: SettingBoxKey.antiGoodsReply,
     defaultVal: false,
     onChanged: (value) => ReplyGrpc.antiGoodsReply = value,
   ),
   SwitchModel(
     title: '侧滑关闭二级页面',
-    leading: Transform.rotate(
-      angle: pi * 1.5,
-      child: const Icon(Icons.touch_app),
-    ),
+    leading: const Icon(CustomIcons.touch_app_rotate_270),
     setKey: SettingBoxKey.slideDismissReplyPage,
     defaultVal: Platform.isIOS,
     onChanged: (value) => CommonSlideMixin.slideDismissReplyPage = value,
@@ -615,12 +582,17 @@ List<SettingsModel> get extraSettings => [
     defaultVal: false,
     onChanged: (value) => MemberTabType.showMemberShop = value,
   ),
-  const SwitchModel(
-    leading: Icon(Icons.airplane_ticket_outlined),
-    title: '设置代理',
-    subtitle: '设置代理 host:port',
-    setKey: SettingBoxKey.enableSystemProxy,
-    onTap: _showProxyDialog,
+  const SplitModel(
+    normalModel: NormalModel.split(
+      title: '设置代理',
+      subtitle: '设置代理 host:port',
+      leading: Icon(Icons.airplane_ticket_outlined),
+    ),
+    switchModel: SwitchModel.split(
+      defaultVal: false,
+      setKey: SettingBoxKey.enableSystemProxy,
+      onTap: _showProxyDialog,
+    ),
   ),
   const SwitchModel(
     title: '自动清除缓存',

@@ -1,7 +1,7 @@
-import 'dart:async';
+import 'dart:async' show Timer;
 import 'dart:convert' show jsonDecode, utf8;
-import 'dart:io';
-import 'dart:math';
+import 'dart:io' show Platform, File;
+import 'dart:typed_data' show Uint8List;
 
 import 'package:PiliPlus/common/constants.dart';
 import 'package:PiliPlus/common/widgets/button/icon_button.dart';
@@ -35,12 +35,12 @@ import 'package:PiliPlus/pages/video/widgets/header_mixin.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/data_source.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_repeat.dart';
-import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/services/shutdown_timer_service.dart'
     show shutdownTimerService;
 import 'package:PiliPlus/utils/accounts.dart';
 import 'package:PiliPlus/utils/accounts/account.dart';
+import 'package:PiliPlus/utils/connectivity_utils.dart';
 import 'package:PiliPlus/utils/extension/iterable_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
@@ -50,6 +50,7 @@ import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:PiliPlus/utils/storage_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:PiliPlus/utils/video_utils.dart';
 import 'package:battery_plus/battery_plus.dart';
@@ -58,7 +59,7 @@ import 'package:dio/dio.dart';
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:floating/floating.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart' hide showBottomSheet;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -526,15 +527,12 @@ class HeaderControlState extends State<HeaderControl>
                         () {
                           final flipY = plPlayerController.flipY.value;
                           return ActionRowLineItem(
-                            icon: Transform.rotate(
-                              angle: pi / 2,
-                              child: Icon(
-                                Icons.flip,
-                                size: 13,
-                                color: flipY
-                                    ? theme.colorScheme.onSecondaryContainer
-                                    : theme.colorScheme.outline,
-                              ),
+                            icon: Icon(
+                              CustomIcons.flip_rotate_90,
+                              size: 13,
+                              color: flipY
+                                  ? theme.colorScheme.onSecondaryContainer
+                                  : theme.colorScheme.outline,
                             ),
                             onTap: () {
                               plPlayerController.flipY.value = !flipY;
@@ -980,7 +978,7 @@ class HeaderControlState extends State<HeaderControl>
                         // update
                         if (!plPlayerController.tempPlayerConf) {
                           setting.put(
-                            await Utils.isWiFi
+                            await ConnectivityUtils.isWiFi
                                 ? SettingBoxKey.defaultVideoQa
                                 : SettingBoxKey.defaultVideoQaCellular,
                             quality,
@@ -1060,7 +1058,7 @@ class HeaderControlState extends State<HeaderControl>
                         // update
                         if (!plPlayerController.tempPlayerConf) {
                           setting.put(
-                            await Utils.isWiFi
+                            await ConnectivityUtils.isWiFi
                                 ? SettingBoxKey.defaultAudioQa
                                 : SettingBoxKey.defaultAudioQaCellular,
                             quality,
@@ -1214,7 +1212,7 @@ class HeaderControlState extends State<HeaderControl>
                               '',
                             );
                           }
-                          Utils.saveBytes2File(
+                          StorageUtils.saveBytes2File(
                             name: name,
                             bytes: bytes,
                             allowedExtensions: const ['json'],
@@ -1757,21 +1755,8 @@ class HeaderControlState extends State<HeaderControl>
                     size: 15,
                     color: Colors.white,
                   ),
-                  onPressed: () {
-                    if (plPlayerController.onPopInvokedWithResult(
-                      false,
-                      null,
-                    )) {
-                      return;
-                    }
-                    if (PlatformUtils.isMobile &&
-                        !horizontalScreen &&
-                        !isPortrait) {
-                      verticalScreenForTwoSeconds();
-                    } else {
-                      Get.back();
-                    }
-                  },
+                  onPressed: () =>
+                      plPlayerController.onPopInvokedWithResult(false, null),
                 ),
               ),
               if (!plPlayerController.isDesktopPip &&
@@ -1787,12 +1772,7 @@ class HeaderControlState extends State<HeaderControl>
                       size: 15,
                       color: Colors.white,
                     ),
-                    onPressed: () {
-                      videoDetailCtr.plPlayerController
-                        ..isCloseAll = true
-                        ..dispose();
-                      Get.until((route) => route.isFirst);
-                    },
+                    onPressed: plPlayerController.onCloseAll,
                   ),
                 ),
               title,
@@ -1863,21 +1843,10 @@ class HeaderControlState extends State<HeaderControl>
                       tooltip: '提交片段',
                       style: btnStyle,
                       onPressed: () => videoDetailCtr.onBlock(context),
-                      icon: const Stack(
-                        clipBehavior: Clip.none,
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(
-                            Icons.shield_outlined,
-                            size: 19,
-                            color: Colors.white,
-                          ),
-                          Icon(
-                            Icons.play_arrow_rounded,
-                            size: 13,
-                            color: Colors.white,
-                          ),
-                        ],
+                      icon: const Icon(
+                        CustomIcons.shield_play_arrow,
+                        size: 20,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -1900,7 +1869,7 @@ class HeaderControlState extends State<HeaderControl>
                       : const SizedBox.shrink(),
                 ),
               ],
-              if (isFullScreen || PlatformUtils.isDesktop) ...[
+              if (!isPortrait || isFullScreen || PlatformUtils.isDesktop) ...[
                 SizedBox(
                   width: btnWidth,
                   height: btnHeight,

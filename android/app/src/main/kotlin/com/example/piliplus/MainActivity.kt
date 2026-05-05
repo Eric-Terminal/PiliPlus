@@ -1,11 +1,17 @@
 package com.example.piliplus
 
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
 import android.content.res.Configuration
+import android.graphics.BitmapFactory
+import android.graphics.Point
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -15,10 +21,13 @@ import androidx.core.net.toUri
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import kotlin.math.roundToInt
 import kotlin.system.exitProcess
+import java.io.File
 
 class MainActivity : AudioServiceActivity() {
     private lateinit var methodChannel: MethodChannel
+    private var isFoldable = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -27,6 +36,7 @@ class MainActivity : AudioServiceActivity() {
         methodChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "back" -> back();
+
                 "biliSendCommAntifraud" -> {
                     try {
                         val action = call.argument<Int>("action") ?: 0
@@ -133,8 +143,84 @@ class MainActivity : AudioServiceActivity() {
                     }
                 }
 
+                "createShortcut" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        try {
+                            val shortcutManager =
+                                context.getSystemService(ShortcutManager::class.java)
+                            if (shortcutManager.isRequestPinShortcutSupported) {
+                                val id = call.argument<String>("id")!!
+                                val uri = call.argument<String>("uri")!!
+                                val label = call.argument<String>("label")!!
+                                val icon = call.argument<String>("icon")!!
+                                val bitmap = BitmapFactory.decodeFile(icon)
+                                val shortcut =
+                                    ShortcutInfo.Builder(context, id)
+                                        .setShortLabel(label)
+                                        .setIcon(Icon.createWithAdaptiveBitmap(bitmap))
+                                        .setIntent(Intent(Intent.ACTION_VIEW, uri.toUri()))
+                                        .build()
+                                val pinIntent =
+                                    shortcutManager.createShortcutResultIntent(shortcut)
+                                val pendingIntent = PendingIntent.getBroadcast(
+                                    context, 0, pinIntent, PendingIntent.FLAG_IMMUTABLE
+                                )
+                                shortcutManager.requestPinShortcut(
+                                    shortcut,
+                                    pendingIntent.intentSender
+                                )
+                            }
+                        } catch (e: Exception) {
+                        }
+                    }
+                }
+
+                "maxScreenSize" -> {
+                    maxScreenSize()?.let {
+                        result.success(it)
+                    }
+                }
+
+                "isFoldable" -> {
+                    result.success(isFoldable)
+                }
+
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (isFoldable) {
+            maxScreenSize()?.let {
+                MethodChannel(
+                    flutterEngine!!.dartExecutor.binaryMessenger,
+                    "ScreenChannel"
+                ).invokeMethod("onConfigChanged", it)
+            }
+        }
+    }
+
+    private fun maxScreenSize(): Map<String, Int>? {
+        try {
+            val density = resources.displayMetrics.density
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val maxBounds = windowManager.maximumWindowMetrics.bounds
+                return mapOf(
+                    "maxWidth" to (maxBounds.width() / density).roundToInt(),
+                    "maxHeight" to (maxBounds.height() / density).roundToInt(),
+                )
+            } else {
+                val realSizePoint = Point()
+                windowManager.defaultDisplay.getRealSize(realSizePoint)
+                return mapOf(
+                    "maxWidth" to (realSizePoint.x / density).roundToInt(),
+                    "maxHeight" to (realSizePoint.y / density).roundToInt(),
+                )
+            }
+        } catch (e: Exception) {
+            return null
         }
     }
 
@@ -152,13 +238,19 @@ class MainActivity : AudioServiceActivity() {
             window.attributes.layoutInDisplayCutoutMode =
                 LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                isFoldable =
+                    packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_HINGE_ANGLE)
+            } catch (e: Exception) {
+            }
+        }
     }
 
     override fun onDestroy() {
         stopService(Intent(this, com.ryanheise.audioservice.AudioService::class.java))
         super.onDestroy()
-        android.os.Process.killProcess(android.os.Process.myPid())
-        exitProcess(0)
     }
 
     override fun onUserLeaveHint() {
