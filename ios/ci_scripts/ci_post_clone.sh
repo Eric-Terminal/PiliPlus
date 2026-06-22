@@ -36,6 +36,7 @@ export PATH="$FLUTTER_HOME/bin:$PATH"
 echo "Flutter 版本信息："
 flutter --version
 flutter config --no-analytics || true
+flutter config --no-enable-swift-package-manager
 flutter precache --ios
 
 if ! command -v pod >/dev/null 2>&1; then
@@ -51,9 +52,13 @@ if ! command -v pod >/dev/null 2>&1; then
 fi
 
 cd "$REPO_DIR"
+rm -rf .dart_tool/flutter_build ios/.symlinks ios/Pods ios/Podfile.lock ios/Flutter/ephemeral
+rm -f .flutter-plugins .flutter-plugins-dependencies
 flutter pub get
 
 cd "$IOS_DIR"
 pod install
+echo "已安装的 CocoaPods："
+sed -n '/^PODS:/,/^DEPENDENCIES:/p' Podfile.lock
 
 echo "Xcode Cloud post-clone 阶段完成。"

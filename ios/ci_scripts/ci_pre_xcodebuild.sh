@@ -13,6 +13,10 @@ if [ -d "$HOME/flutter/bin" ]; then
   export PATH="$HOME/flutter/bin:$PATH"
 fi
 
+if command -v flutter >/dev/null 2>&1; then
+  flutter config --no-enable-swift-package-manager
+fi
+
 VERSION_CODE="$(git -C "$REPO_DIR" rev-list --count HEAD)"
 VERSION_NAME="$(sed -n 's/^[[:space:]]*version:[[:space:]]*\([0-9][0-9.]*\).*/\1/p' "$REPO_DIR/pubspec.yaml" | head -n1)"
 if [ -z "$VERSION_NAME" ]; then
