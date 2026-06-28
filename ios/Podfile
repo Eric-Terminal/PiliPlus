@@ -4,6 +4,47 @@ platform :ios, '14.0'
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+require 'digest'
+require 'fileutils'
+
+CHAT_BOTTOM_CONTAINER_FRAMEWORK_URL = 'https://github.com/LinXunFeng/flutter_chat_packages_pub/releases/download/chat_bottom_container/ios_0.0.1.zip'
+CHAT_BOTTOM_CONTAINER_FRAMEWORK_SHA256 = 'b9c380b72010e5d378cc813fbc5cca9b21471b82134e633567a6beee4b5a2a91'
+
+def prepare_chat_bottom_container_binary
+  plugin_ios_dir = File.expand_path('.symlinks/plugins/chat_bottom_container/ios', __dir__)
+  podspec_path = File.join(plugin_ios_dir, 'chat_bottom_container.podspec')
+  return unless File.exist?(podspec_path)
+
+  framework_dir = File.join(plugin_ios_dir, 'chat_bottom_container', 'Frameworks')
+  framework_path = File.join(framework_dir, 'FSAChatBottomContainer.xcframework')
+  unless File.directory?(framework_path)
+    FileUtils.rm_rf(framework_dir)
+    FileUtils.mkdir_p(framework_dir)
+
+    zip_path = File.join(framework_dir, 'ios_0.0.1.zip')
+    system('curl', '-L', '-f', '-o', zip_path, CHAT_BOTTOM_CONTAINER_FRAMEWORK_URL) ||
+      raise('下载 FSAChatBottomContainer.xcframework 失败')
+
+    actual_sha256 = Digest::SHA256.file(zip_path).hexdigest
+    unless actual_sha256 == CHAT_BOTTOM_CONTAINER_FRAMEWORK_SHA256
+      raise("FSAChatBottomContainer.xcframework 校验失败：#{actual_sha256}")
+    end
+
+    system('unzip', '-q', zip_path, '-d', framework_dir) ||
+      raise('解压 FSAChatBottomContainer.xcframework 失败')
+    File.delete(zip_path)
+  end
+
+  podspec = File.read(podspec_path)
+  return if podspec.include?('FSAChatBottomContainer.xcframework')
+
+  vendored_framework = "  s.vendored_frameworks = 'chat_bottom_container/Frameworks/FSAChatBottomContainer.xcframework'\n"
+  unless podspec.sub!("  s.dependency 'Flutter'\n", "  s.dependency 'Flutter'\n#{vendored_framework}")
+    raise('更新 chat_bottom_container.podspec 失败')
+  end
+  File.write(podspec_path, podspec)
+end
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
@@ -32,6 +73,7 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  prepare_chat_bottom_container_binary
 end
 
 post_install do |installer|
