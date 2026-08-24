@@ -7,7 +7,7 @@
 - `ios/ci_scripts/ci_post_clone.sh`
   - 自动安装/准备 Flutter SDK（优先读取 `.fvmrc` 版本）
   - 禁用 Flutter Swift Package Manager，强制 iOS 插件通过 CocoaPods 集成
-  - 执行 `flutter pub get`
+  - 应用 iOS 编译补丁并执行 `flutter pub get`
   - 执行 `pod install`
 - `ios/ci_scripts/ci_pre_xcodebuild.sh`
   - 清理会污染 iOS 编译的环境变量（`CPATH`、`LIBRARY_PATH`、`SDKROOT`）
