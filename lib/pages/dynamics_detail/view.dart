@@ -4,10 +4,17 @@ import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/flutter/text_field/controller.dart';
+import 'package:PiliPlus/common/widgets/gesture/horizontal_drag_gesture_recognizer.dart';
 import 'package:PiliPlus/common/widgets/pair.dart';
-import 'package:PiliPlus/common/widgets/scroll_physics.dart';
+import 'package:PiliPlus/common/widgets/scaffold/mini_scaffold.dart';
+import 'package:PiliPlus/common/widgets/scaffold/simple_scaffold.dart';
+import 'package:PiliPlus/common/widgets/scroll_behavior.dart'
+    show NoOverscrollIndicator;
+import 'package:PiliPlus/common/widgets/scroll_physics.dart'
+    show ReloadScrollPhysics;
 import 'package:PiliPlus/common/widgets/sliver/sliver_floating_header.dart';
 import 'package:PiliPlus/common/widgets/sliver/sliver_to_box_adapter.dart';
+import 'package:PiliPlus/common/widgets/tap_region_surface.dart';
 import 'package:PiliPlus/http/constants.dart';
 import 'package:PiliPlus/http/dynamics.dart';
 import 'package:PiliPlus/http/loading_state.dart';
@@ -22,14 +29,22 @@ import 'package:PiliPlus/pages/dynamics_create/view.dart';
 import 'package:PiliPlus/pages/dynamics_detail/controller.dart';
 import 'package:PiliPlus/pages/dynamics_repost/view.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
+import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/grid.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
+import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/request_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
+import 'package:material_ui/material_ui.dart';
+
+const Set<TargetPlatform> _kDesktopPlatforms = <TargetPlatform>{
+  TargetPlatform.macOS,
+  TargetPlatform.windows,
+  TargetPlatform.linux,
+};
 
 class DynamicDetailPage extends StatefulWidget {
   const DynamicDetailPage({super.key});
@@ -46,26 +61,15 @@ class _DynamicDetailPageState
 
   late final RxBool _isRefreshing = false.obs;
 
-  void _startRefresh() {
-    _isRefreshing.value = true;
-    _refreshController.repeat();
-  }
-
   void _stopRefresh() {
     if (!mounted) return;
     _isRefreshing.value = false;
-    _refreshController.stop();
   }
 
   void _onRefresh(Future<void> future) {
-    _startRefresh();
+    _isRefreshing.value = true;
     future.whenComplete(_stopRefresh);
-    // Future.delayed(
-    //   const Duration(milliseconds: 800),
-    // ).whenComplete(_stopRefresh);
   }
-
-  late final AnimationController _refreshController;
 
   @override
   dynamic get arguments => {'item': controller.dynItem};
@@ -89,36 +93,31 @@ class _DynamicDetailPageState
       ),
       tag: id,
     );
-    _refreshController = AnimationController(
-      vsync: this,
-      duration: CircularProgressIndicator.defaultAnimationDuration,
-    );
   }
+
+  ScrollableState? _scrollable;
 
   @override
   void dispose() {
-    _refreshController.dispose();
+    _scrollable = null;
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      appBar: _buildAppBar(),
-      body: Padding(
-        padding: EdgeInsets.only(left: padding.left, right: padding.right),
-        child: isPortrait
-            ? refreshIndicator(
-                onRefresh: controller.onRefresh,
-                child: _buildBody(),
-              )
-            : _buildBody(),
-      ),
-      floatingActionButtonLocation: floatingActionButtonLocation,
-      floatingActionButton: SlideTransition(
-        position: fabAnimation,
-        child: _buildBottom(),
+    return SelectionTapRegionSurface(
+      /// apply `lib/scripts/scrollable.patch`
+      isScrolling: () => _scrollable?.shouldIgnorePointer ?? false,
+      child: SimpleScaffold(
+        appBar: _buildAppBar(),
+        body: Padding(
+          padding: EdgeInsets.only(left: padding.left, right: padding.right),
+          child: _buildBody(),
+        ),
+        fab: SlideTransition(
+          position: fabAnimation,
+          child: _buildBottom(),
+        ),
       ),
     );
   }
@@ -146,15 +145,14 @@ class _DynamicDetailPageState
       try {
         for (final e in richTextNodes) {
           if (e.type == 'RICH_TEXT_NODE_TYPE_EMOJI') {
-            const placeHolder = '\uFFFC';
             items.add(
               RichTextItem(
-                text: placeHolder,
+                text: Style.placeHolder,
                 rawText: e.origText,
                 type: .emoji,
                 range: TextRange(
                   start: buffer.length,
-                  end: buffer.length + placeHolder.length,
+                  end: buffer.length + Style.placeHolder.length,
                 ),
                 emote: Emote(
                   url: e.emoji!.url!,
@@ -162,7 +160,7 @@ class _DynamicDetailPageState
                 ),
               ),
             );
-            buffer.write(placeHolder);
+            buffer.write(Style.placeHolder);
             continue;
           }
           final range = TextRange(
@@ -306,12 +304,14 @@ class _DynamicDetailPageState
               if (postion.pixels >= postion.maxScrollExtent) {
                 postion.jumpTo(postion.pixels);
               }
-            }
-            switch (value) {
-              case 0:
-                _onRefresh(controller.onRefresh());
-              case 1:
-                _onRefresh(_reactController.onRefresh());
+              switch (value) {
+                case 0:
+                  _onRefresh(controller.onRefresh());
+                case 1:
+                  _onRefresh(_reactController.onRefresh());
+              }
+            } else if (positions.length > 1) {
+              positions.elementAt(1).jumpTo(0);
             }
           }
         },
@@ -346,55 +346,59 @@ class _DynamicDetailPageState
         Obx(() => replyList(controller.loadingState.value)),
       ],
     );
-    return Stack(
-      clipBehavior: .none,
+    final child = TabBarView(
+      controller: tabController,
+      hitTestBehavior: .translucent,
+      physics: const NeverScrollableScrollPhysics(),
+      horizontalDragGestureRecognizer:
+          CustomHorizontalDragGestureRecognizer.new,
       children: [
-        tabBarView(
-          controller: tabController,
-          children: [
-            isPortrait
-                ? reply
-                : refreshIndicator(
-                    onRefresh: controller.onRefresh,
-                    child: reply,
-                  ),
-            DynReactPage(
-              isPortrait: isPortrait,
-              id: controller.dynItem.idStr,
-              controller: _reactController,
-            ),
-          ],
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          top: displacement,
-          child: Obx(() {
-            final isRefreshing = _isRefreshing.value;
-            return AnimatedScale(
-              scale: isRefreshing ? 1 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Center(
-                child: SizedBox.fromSize(
-                  size: const .square(40),
-                  child: Material(
-                    type: .circle,
-                    color: theme.colorScheme.onSecondary,
-                    elevation: 2.0,
-                    child: Padding(
-                      padding: const .all(6),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        controller: _refreshController,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
+        isPortrait
+            ? reply
+            : refreshIndicator(onRefresh: controller.onRefresh, child: reply),
+        DynReactPage(
+          isPortrait: isPortrait,
+          id: controller.dynItem.idStr,
+          controller: _reactController,
         ),
       ],
+    );
+    if (isPortrait) {
+      return Stack(
+        clipBehavior: .none,
+        children: [
+          child,
+          Positioned(
+            left: 0,
+            right: 0,
+            top: displacement,
+            child: Obx(
+              () => _RefreshIndicator(isRefreshing: _isRefreshing.value),
+            ),
+          ),
+        ],
+      );
+    }
+    return child;
+  }
+
+  Widget _buildDynPanel() {
+    return SliverToBoxWithOffsetAdapter(
+      offset: 55,
+      onVisibilityChanged: controller.showTitle.call,
+      child: Builder(
+        builder: (context) {
+          _scrollable = Scrollable.maybeOf(context);
+          return DynamicPanel(
+            item: controller.dynItem,
+            isDetail: true,
+            isDetailPortraitW: isPortrait,
+            onSetPubSetting: controller.onSetPubSetting,
+            onEdit: _onEdit,
+            onSetReplySubject: controller.onSetReplySubject,
+          );
+        },
+      ),
     );
   }
 
@@ -402,21 +406,9 @@ class _DynamicDetailPageState
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: padding),
       child: NestedScrollView(
+        scrollBehavior: const NoOverscrollIndicator(),
         headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
-            SliverToBoxWithOffsetAdapter(
-              offset: 55,
-              onVisibilityChanged: controller.showTitle.call,
-              child: DynamicPanel(
-                item: controller.dynItem,
-                isDetail: true,
-                isDetailPortraitW: isPortrait,
-                onSetPubSetting: controller.onSetPubSetting,
-                onEdit: _onEdit,
-                onSetReplySubject: controller.onSetReplySubject,
-              ),
-            ),
-          ];
+          return [_buildDynPanel()];
         },
         body: Column(
           children: [
@@ -432,7 +424,7 @@ class _DynamicDetailPageState
     padding = padding / 4;
     final flex = controller.ratio[0].toInt();
     final flex1 = controller.ratio[1].toInt();
-    return Row(
+    final child = Row(
       children: [
         Expanded(
           flex: flex,
@@ -443,18 +435,7 @@ class _DynamicDetailPageState
                   left: padding,
                   bottom: this.padding.bottom + 100,
                 ),
-                sliver: SliverToBoxWithOffsetAdapter(
-                  offset: 55,
-                  onVisibilityChanged: controller.showTitle.call,
-                  child: DynamicPanel(
-                    item: controller.dynItem,
-                    isDetail: true,
-                    isDetailPortraitW: isPortrait,
-                    onSetPubSetting: controller.onSetPubSetting,
-                    onEdit: _onEdit,
-                    onSetReplySubject: controller.onSetReplySubject,
-                  ),
-                ),
+                sliver: _buildDynPanel(),
               ),
             ],
           ),
@@ -463,9 +444,7 @@ class _DynamicDetailPageState
           flex: flex1,
           child: Padding(
             padding: EdgeInsets.only(right: padding),
-            child: Scaffold(
-              backgroundColor: Colors.transparent,
-              resizeToAvoidBottomInset: false,
+            child: MiniScaffold(
               body: Column(
                 children: [
                   _buildTabBar(),
@@ -477,6 +456,14 @@ class _DynamicDetailPageState
         ),
       ],
     );
+    if (PlatformUtils.isDesktop) {
+      return PrimaryScrollController(
+        controller: PrimaryScrollController.of(context),
+        automaticallyInheritForPlatforms: _kDesktopPlatforms,
+        child: child,
+      );
+    }
+    return child;
   }
 
   Widget _buildBody() {
@@ -487,7 +474,7 @@ class _DynamicDetailPageState
     } else {
       child = _buildHorizontal(padding);
     }
-    return fabAnimWrapper(child);
+    return fabAnimWrapper(child: child);
   }
 
   Widget _buildBottom() {
@@ -547,9 +534,7 @@ class _DynamicDetailPageState
               color: theme.colorScheme.surface,
               border: Border(
                 top: BorderSide(
-                  color: theme.colorScheme.outline.withValues(
-                    alpha: 0.08,
-                  ),
+                  color: theme.colorScheme.outline.withValues(alpha: 0.08),
                 ),
               ),
             ),
@@ -591,7 +576,7 @@ class _DynamicDetailPageState
                     text: '分享',
                     stat: null,
                     onPressed: (_) => ShareUtils.shareText(
-                      '${HttpString.dynamicShareBaseUrl}/${controller.dynItem.idStr}',
+                      '${HttpString.opusBaseUrl}/${controller.dynItem.idStr}',
                     ),
                   ),
                 ),
@@ -670,5 +655,92 @@ class _DynamicDetailPageState
       final position = PrimaryScrollController.of(context).position;
       position.jumpTo(position.maxScrollExtent);
     } catch (_) {}
+  }
+}
+
+class _RefreshIndicator extends StatefulWidget {
+  const _RefreshIndicator({
+    required this.isRefreshing,
+  });
+
+  final bool isRefreshing;
+
+  @override
+  State<_RefreshIndicator> createState() => _RefreshIndicatorState();
+}
+
+class _RefreshIndicatorState extends State<_RefreshIndicator>
+    with TickerProviderStateMixin {
+  late final AnimationController _scaleController;
+  late final AnimationController _progressController;
+  late Color _color;
+
+  @override
+  void initState() {
+    super.initState();
+    _scaleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _progressController = AnimationController(
+      vsync: this,
+      duration: CircularProgressIndicator.defaultAnimationDuration,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scaleController.dispose();
+    _progressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_RefreshIndicator oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isRefreshing != widget.isRefreshing) {
+      if (widget.isRefreshing) {
+        _scaleController.value = 1;
+        _progressController
+          ..value = 0.0
+          ..repeat();
+      } else {
+        _scaleController.reverse();
+        _progressController.stop();
+      }
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final colorScheme = ColorScheme.of(context);
+    _color = colorScheme.isDark
+        ? colorScheme.onInverseSurface
+        : colorScheme.surface;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scaleController,
+      child: Center(
+        child: SizedBox.square(
+          dimension: 40,
+          child: Material(
+            type: .circle,
+            elevation: 2.0,
+            color: _color,
+            child: Padding(
+              padding: const .all(6),
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                controller: _progressController,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
