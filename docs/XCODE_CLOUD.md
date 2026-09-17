@@ -8,6 +8,7 @@
   - 自动安装/准备 Flutter SDK（优先读取 `.fvmrc` 版本）
   - 禁用 Flutter Swift Package Manager，强制 iOS 插件通过 CocoaPods 集成
   - 应用 iOS 编译补丁并执行 `flutter pub get`
+  - 执行 `test/plugin/pl_player/video_output_size_test.dart`，验证视频输出尺寸与原生调整请求调度；失败时停止构建
   - 执行 `pod install`
 - `ios/ci_scripts/ci_pre_xcodebuild.sh`
   - 清理会污染 iOS 编译的环境变量（`CPATH`、`LIBRARY_PATH`、`SDKROOT`）

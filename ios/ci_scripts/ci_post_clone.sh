@@ -66,6 +66,9 @@ rm -rf .dart_tool/flutter_build ios/.symlinks ios/Pods ios/Podfile.lock ios/Flut
 rm -f .flutter-plugins .flutter-plugins-dependencies
 FLUTTER_ROOT="$FLUTTER_HOME" sh "$REPO_DIR/lib/scripts/patch_ios.sh"
 
+echo "运行 iOS 视频输出尺寸回归测试"
+flutter test --no-pub test/plugin/pl_player/video_output_size_test.dart
+
 cd "$IOS_DIR"
 pod install
 echo "已安装的 CocoaPods："
