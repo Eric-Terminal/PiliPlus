@@ -8,6 +8,7 @@
   - 自动安装/准备 Flutter SDK（优先读取 `.fvmrc` 版本）
   - 禁用 Flutter Swift Package Manager，强制 iOS 插件通过 CocoaPods 集成
   - 应用 iOS 编译补丁并执行 `flutter pub get`
+  - 修正 iOS libmpv 下载地址，保留固定版本和 SHA-256 校验；原生框架准备失败时立即停止安装
   - 执行 `test/plugin/pl_player/video_output_size_test.dart`，验证视频输出尺寸与原生调整请求调度；失败时停止构建
   - 执行 `pod install`
 - `ios/ci_scripts/ci_pre_xcodebuild.sh`
@@ -58,3 +59,15 @@
 ### 4. Archive 提示某个 Flutter 插件模块找不到
 
 Flutter 3.44 默认启用 Swift Package Manager。当前工程仍按 CocoaPods 方式集成 iOS 插件，因此脚本会显式关闭 Swift Package Manager，并清理旧的 `Pods`、`.symlinks` 与 Flutter 插件清单后重新安装依赖。
+
+### 5. Archive 提示 `Framework 'Mpv' not found`
+
+先检查 `ci_post_clone.log` 中 libmpv 的下载和校验结果。当前锁定的 media-kit 依赖把 `v0.7.2` 指向了没有该版本的 `gungun974` 仓库，并忽略了 `make` 失败，导致缺少框架时仍显示 Pod 安装成功。
+
+`lib/scripts/media_kit_ios.patch` 将地址修正为 `media-kit/libmpv-darwin-build` 的同版本资源，保持原 SHA-256 不变，并让下载错误、校验失败和解压失败直接终止 Pod 安装。该补丁只作用于 Flutter 实际解析的 iOS 插件目录，不改变播放器版本或视频尺寸逻辑。
+
+依赖打补丁后，可用系统 Ruby 验证三类失败都能阻止 Pod 安装：
+
+```sh
+ruby test/ci/media_kit_ios_dependency_test.rb ios/.symlinks/plugins/media_kit_libs_ios_video/ios
+```

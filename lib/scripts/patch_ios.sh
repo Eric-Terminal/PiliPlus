@@ -107,5 +107,15 @@ echo "cupertino_ui dir: $CUPERTINO_UI_DIR"
 cd "$CUPERTINO_UI_DIR"
 apply_patch_file "lib/scripts/cupertino/bottom_sheet_ios_flutter.patch"
 
+# 使用 Flutter 实际解析的插件目录，避免补丁落到其他版本的 Pub 缓存。
+MEDIA_KIT_IOS_DIR="$(ruby -rjson -e '
+  plugins = JSON.parse(File.read(ARGV.fetch(0))).fetch("plugins").fetch("ios")
+  plugin = plugins.find { |entry| entry.fetch("name") == "media_kit_libs_ios_video" }
+  abort "错误：未找到 iOS media-kit 插件。" unless plugin
+  puts plugin.fetch("path")
+' "$REPO_DIR/.flutter-plugins-dependencies")"
+cd "$(git -C "$MEDIA_KIT_IOS_DIR" rev-parse --show-toplevel)"
+apply_patch_file "lib/scripts/media_kit_ios.patch"
+
 cd "$REPO_DIR"
 echo "iOS 编译补丁已应用。"
