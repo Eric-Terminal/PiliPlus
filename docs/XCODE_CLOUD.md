@@ -8,8 +8,8 @@
   - 自动安装/准备 Flutter SDK（优先读取 `.fvmrc` 版本）
   - 禁用 Flutter Swift Package Manager，强制 iOS 插件通过 CocoaPods 集成
   - 应用 iOS 编译补丁并执行 `flutter pub get`
-  - 修正 iOS libmpv 下载地址，保留固定版本和 SHA-256 校验；原生框架准备失败时立即停止安装
-  - 执行 `test/plugin/pl_player/video_output_size_test.dart`，验证视频输出尺寸与原生调整请求调度；失败时停止构建
+  - 保留当前播放器依赖的 libmpv 下载地址、固定版本和 SHA-256 校验；原生框架准备失败时立即停止安装
+  - 执行 `test/plugin/pl_player/hdr_policy_test.dart`，验证 HDR 片源识别、输出策略与换源状态；失败时停止构建
   - 执行 `pod install`
 - `ios/ci_scripts/ci_pre_xcodebuild.sh`
   - 清理会污染 iOS 编译的环境变量（`CPATH`、`LIBRARY_PATH`、`SDKROOT`）
@@ -62,9 +62,11 @@ Flutter 3.44 默认启用 Swift Package Manager。当前工程仍按 CocoaPods �
 
 ### 5. Archive 提示 `Framework 'Mpv' not found`
 
-先检查 `ci_post_clone.log` 中 libmpv 的下载和校验结果。当前锁定的 media-kit 依赖把 `v0.7.2` 指向了没有该版本的 `gungun974` 仓库，并忽略了 `make` 失败，导致缺少框架时仍显示 Pod 安装成功。
+先检查 `ci_post_clone.log` 中 libmpv 的下载和校验结果。media-kit 的 Podspec 默认忽略 `make` 失败，可能导致缺少框架时仍显示 Pod 安装成功。
 
-`lib/scripts/media_kit_ios.patch` 将地址修正为 `media-kit/libmpv-darwin-build` 的同版本资源，保持原 SHA-256 不变，并让下载错误、校验失败和解压失败直接终止 Pod 安装。该补丁只作用于 Flutter 实际解析的 iOS 插件目录，不改变播放器版本或视频尺寸逻辑。
+当前 HDR 分支锁定 media-kit 的 `native` 分支提交 `73771ec38176be2d984a3049c28177bce23b54a0`，使用 `gungun974/melodink-libmpv-darwin-build` 的 `v0.39.0`。该地址有对应资源，不应沿用旧 `v0.7.2` 的下载地址替换。
+
+`lib/scripts/media_kit_ios.patch` 保持该下载地址、版本和 SHA-256 不变，仅增加 HTTP 错误检测、重试，并让下载错误、校验失败和解压失败直接终止 Pod 安装。补丁只作用于 Flutter 实际解析的 iOS 插件目录，不改变播放器行为。
 
 依赖打补丁后，可用系统 Ruby 验证三类失败都能阻止 Pod 安装：
 

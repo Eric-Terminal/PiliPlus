@@ -67,7 +67,7 @@ describe 'iOS libmpv 安装失败处理' do
     output, status = evaluate_podspec
     assert_installation_stopped(output, status)
     assert_includes output, 'FAILED'
-    refute File.exist?(File.join(@directory, '.cache/xcframeworks/libmpv-xcframeworks-v0.7.2-ios-universal.tar.gz'))
+    assert_empty Dir.glob(File.join(@directory, '.cache/xcframeworks/libmpv-xcframeworks-*-ios-universal.tar.gz'))
   end
 
   it '校验通过但解压失败时也终止 Pod 安装' do
